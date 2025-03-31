@@ -14,6 +14,7 @@
 #import "imageView.h"
 #import "preferences.h"
 #import "selectionView.h"
+#import <CoreImage/CoreImage.h>
 
 @class VButton;
 
