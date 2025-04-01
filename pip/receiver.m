@@ -37,6 +37,8 @@
 static raop_t *raop = NULL;
 static dnssd_t *dnssd = NULL;
 static uint open_connections = 0;
+raop_connection_t* connections[MAX_CONNECTIONS] = {0};
+uint active_connections = 0;
 
 static void get_mac(uint8_t mac[6]) {
   struct ifaddrs *ifaddrs;
@@ -87,39 +89,70 @@ void airplay_receiver_session_stop(raop_connection_t* conn){
   NSLog(@"airplay_receiver_session_stop: %p", conn);
   open_connections -= 1;
   conn->usr_data = NULL;
-  raop_stop_conn(conn);
 }
 
-static void conn_init(void *cls, raop_connection_t* conn) {
+static void conn_init(void *cls) {
+  if (active_connections >= MAX_CONNECTIONS) {
+    NSLog(@"Max connections reached (%d)", MAX_CONNECTIONS);
+    return;
+  }
+
+  raop_connection_t* new_conn = malloc(sizeof(raop_connection_t));
+  memset(new_conn, 0, sizeof(raop_connection_t));
+  
+  // Find empty slot
+  for (int i = 0; i < MAX_CONNECTIONS; i++) {
+    if (connections[i] == NULL) {
+      connections[i] = new_conn;
+      active_connections++;
+      break;
+    }
+  }
+
   open_connections += 1;
-  NSLog(@"conn_init open connections: %i", open_connections);
-  dispatch_sync(dispatch_get_main_queue(), ^{airplay_receiver_session_start(conn);});
+  NSLog(@"conn_init open connections: %i, active connections: %i", open_connections, active_connections);
+  dispatch_sync(dispatch_get_main_queue(), ^{airplay_receiver_session_start(new_conn);});
 }
 
-static void conn_destroy(void *cls, raop_connection_t* conn) {
+static void conn_destroy(void *cls) {
+  raop_connection_t* conn = (raop_connection_t*)cls;
+  if (!conn) return;
+
+  // Find and remove connection from array
+  for (int i = 0; i < MAX_CONNECTIONS; i++) {
+    if (connections[i] == conn) {
+      connections[i] = NULL;
+      active_connections--;
+      break;
+    }
+  }
+
   open_connections -= 1;
-  NSLog(@"conn_destroy open connections: %i", open_connections);
+  NSLog(@"conn_destroy open connections: %i, active connections: %i", open_connections, active_connections);
   Window* window = (__bridge Window *)(conn->usr_data);
   conn->usr_data = window.conn = NULL;
   dispatch_async(dispatch_get_main_queue(), ^{[window performClose:window];});
+  free(conn);
 }
 
-static void conn_reset(void *cls, int timeouts, bool reset_video, raop_connection_t* conn) {
+static void conn_reset(void *cls, int timeouts, bool reset_video) {
   NSLog(@"conn_reset cls: %p, timeouts: %d, reset_video: %u", cls, timeouts, reset_video);
 }
 
-static void conn_teardown(void *cls, bool *teardown_96, bool *teardown_110, raop_connection_t* conn){
+static void conn_teardown(void *cls, bool *teardown_96, bool *teardown_110){
   NSLog(@"conn_teardown cls: %p, teardown_96: %u, teardown_110: %u", cls, teardown_96, *teardown_110);
 }
 
-static void audio_process (void *cls, raop_ntp_t *ntp, aac_decode_struct *data, raop_connection_t* conn){
-  if(!conn->usr_data) return;
+static void audio_process (void *cls, raop_ntp_t *ntp, audio_decode_struct *data){
+  raop_connection_t* conn = (raop_connection_t*)cls;
+  if(!conn || !conn->usr_data) return;
   Window* window = (__bridge Window *)(conn->usr_data);
   [window renderAudio:data->data withLength:data->data_len];
 }
 
-static void video_process(void *cls, raop_ntp_t *ntp, h264_decode_struct *data, raop_connection_t* conn){
-  if(!conn->usr_data) return;
+static void video_process(void *cls, raop_ntp_t *ntp, video_decode_struct *data){
+  raop_connection_t* conn = (raop_connection_t*)cls;
+  if(!conn || !conn->usr_data) return;
   Window* window = (__bridge Window *)(conn->usr_data);
   int idx = 0, lastIdx = -1, zeroes = 0;
 
@@ -143,33 +176,34 @@ static void video_process(void *cls, raop_ntp_t *ntp, h264_decode_struct *data, 
   if(lastIdx >= 0) [window renderH264:data->data + lastIdx withLength:(int)(idx - zeroes - lastIdx)];
 }
 
-static void audio_flush (void *cls, raop_connection_t* conn){
+static void audio_flush (void *cls){
   NSLog(@"audio_flush cls: %p", cls);
 }
 
-static void video_flush (void *cls, raop_connection_t* conn){
+static void video_flush (void *cls){
   NSLog(@"video_flush cls: %p", cls);
 }
 
-static void audio_set_volume (void *cls, float volume_db, raop_connection_t* conn){
+static void audio_set_volume (void *cls, float volume_db){
+  raop_connection_t* conn = (raop_connection_t*)cls;
+  if(!conn || !conn->usr_data) return;
+  
   float volume_p = 0;
   if(volume_db < -144) volume_db = -144;
   else if(volume_db > 0) volume_db = 0;
   if(volume_db != -144) volume_p = 1.0 + volume_db / 30.0;
-//  LOGI("audio_set_volume volume_db: %f, volume_p: %f", volume_db, volume_p);
-  if(!conn->usr_data) return;
+  
   Window* window = (__bridge Window *)(conn->usr_data);
   [window setVolume:volume_p];
 }
 
-static void audio_set_metadata(void *cls, const void *buffer, int buflen, raop_connection_t* conn){
-  NSLog(@"audio_set_metadata len: %.*s", buflen, buffer);
+static void audio_set_metadata(void *cls, const void *buffer, int buflen) {
+  NSLog(@"audio_set_metadata: buffer=%p, len=%d", buffer, buflen);
 }
 
-static void audio_set_coverart(void *cls, const void *buffer, int buflen, raop_connection_t* conn){
-  NSLog(@"audio_set_coverart: %.*s", buflen, buffer);
+static void audio_set_coverart(void *cls, const void *buffer, int buflen) {
+  NSLog(@"audio_set_coverart: buffer=%p, len=%d", buffer, buflen);
 }
-
 static void audio_remote_control_id(void *cls, const char *dacp_id, const char *active_remote_header, raop_connection_t* conn){
   NSLog(@"audio_remote_control_id dacp_id: %s, active_remote_header: %s", dacp_id, active_remote_header);
 }
@@ -178,21 +212,27 @@ static void audio_set_progress(void *cls, unsigned int start, unsigned int curr,
   NSLog(@"audio_set_progress start: %u, curr: %u, end: %u", start, curr, end);
 }
 
-static void audio_get_format(void *cls, audio_format_info* info, raop_connection_t* conn){
-  NSLog(@"ct=%d spf=%d usingScreen=%d isMedia=%d  audioFormat=0x%lx", info->ct, info->spf, info->usingScreen, info->isMedia, info->audioFormat);
-  if(!conn->usr_data) return;
-  UInt32 format;
-  switch(info->ct){
-    case 2: format = kAudioFormatAppleLossless; break;
-    case 4: format = kAudioFormatMPEG4AAC; break;
-    case 8: format = kAudioFormatMPEG4AAC_ELD; break;
-    default: return;
-  }
-  Window* window = (__bridge Window *)(conn->usr_data);
-  [window setAudioInputFormat:format withsampleRate:info->sr andChannels:2 andSPF:info->spf];
-}
+//static void audio_get_format(void *cls, unsigned char *ct, unsigned short *spf, bool *usingScreen, bool *isMedia, uint64_t *audioFormat) {
+//  raop_connection_t* conn = (raop_connection_t*)cls;
+//  if(!conn || !conn->usr_data) return;
+//  
+//  NSLog(@"ct=%hhu spf=%hu usingScreen=%d isMedia=%d audioFormat=0x%llx", *ct, *spf, *usingScreen, *isMedia, *audioFormat);
+//  
+//  UInt32 format;
+//  switch(*ct){
+//    case 2: format = kAudioFormatAppleLossless; break;
+//    case 4: format = kAudioFormatMPEG4AAC; break;
+//    case 8: format = kAudioFormatMPEG4AAC_ELD; break;
+//    default: return;
+//  }
+//  Window* window = (__bridge Window *)(conn->usr_data);
+//  [window setAudioInputFormat:format withsampleRate:*sr andChannels:2 andSPF:*spf];
+//}
 
-static void video_report_size(void *cls, float *width_source, float *height_source, float *width, float *height, raop_connection_t* conn){
+static void video_report_size(void *cls, float *width_source, float *height_source, float *width, float *height){
+  raop_connection_t* conn = (raop_connection_t*)cls;
+  if(!conn) return;
+  
   NSLog(@"video_report_size cls: %p, width_source: %f, height_source: %f, width: %f, height: %f",
        cls, *width_source, *height_source, *width, *height);
 }
@@ -230,8 +270,9 @@ void airplay_receiver_start(void){
 //    .audio_set_coverart = audio_set_coverart,
 //    .audio_remote_control_id = audio_remote_control_id,
 //    .audio_set_progress = audio_set_progress,
-    .audio_get_format = audio_get_format,
+//    .audio_get_format = audio_get_format,
 //    .video_report_size = video_report_size,
+    .cls = NULL  // This will be set to the connection pointer when callbacks are invoked
   };
 
   NSSize size = [[NSScreen mainScreen] frame].size;
@@ -243,7 +284,7 @@ void airplay_receiver_start(void){
   if(ns_scale) scale = [ns_scale floatValue];
   // NSLog(@"screen res: %@, scale: %f", NSStringFromSize(size), scale);
 
-  raop = raop_init(MAX_ACTIVE_SESSIONS * 2, &raop_cbs);
+  raop = raop_init(&raop_cbs);
   raop_set_plist(raop, "width", size.width * scale);
   raop_set_plist(raop, "height", size.height * scale);
   raop_set_plist(raop, "refreshRate", 60);
@@ -258,26 +299,36 @@ void airplay_receiver_start(void){
   raop_set_udp_ports(raop, ports);
 
   raop_set_log_callback(raop, log_callback, NULL);
-  raop_set_log_level(raop, LOGGER_INFO);
-//  raop_set_log_level(raop, RAOP_LOG_DEBUG);
-
-  unsigned short port = raop_get_port(raop);
-  raop_start(raop, &port);
-  raop_set_port(raop, port);
-  
-  NSLog(@"raop listening on %u", port);
+  //raop_set_log_level(raop, LOGGER_INFO);
+  raop_set_log_level(raop, LOGGER_DEBUG);
+    
+  int nohold = 0;
+  char* keyfile = "mmm";
 
   int error;
   uint8_t hw_addr[] = {0xa,0xb,0x0,0x0,0xb,0xa};
   get_mac(hw_addr);
   NSLog(@"hw_addr: %02x:%02x:%02x:%02x:%02x:%02x", hw_addr[0], hw_addr[1], hw_addr[2], hw_addr[3], hw_addr[4], hw_addr[5]);
 
+  NSMutableString *mac_address = [[NSString alloc] initWithFormat:@"%.2hhX:%.2hhX:%.2hhX:%.2hhX:%.2hhX:%.2hhX",
+                                          hw_addr[0], hw_addr[1], hw_addr[2],
+                                          hw_addr[3], hw_addr[4], hw_addr[5]];
+
+  char* mac_address_cstr = [mac_address UTF8String];  // Convert NSMutableString to C-string
+  raop_init2(raop, nohold, mac_address_cstr, keyfile);
+  
+  unsigned short port = raop_get_port(raop);
+  raop_start(raop, &port);
+  raop_set_port(raop, port);
+  
+  NSLog(@"raop listening on %u", port);
+
   char server_name[64] = {0};
   int rc = snprintf(server_name, sizeof(server_name) - 1, "%s", "PiP");
 
   struct utsname buf;
   if(uname(&buf) == 0) rc += snprintf(server_name + rc, sizeof(server_name) - 1 - rc, "@%s", buf.nodename);
-  dnssd = dnssd_init(server_name, rc, (char*)hw_addr, sizeof(hw_addr), &error);
+  dnssd = dnssd_init(server_name, rc, (char*)hw_addr, sizeof(hw_addr), &error, 0);
   if(error){
     NSLog(@"Could not initialize dnssd library, error: %d", error);
     airplay_receiver_stop();

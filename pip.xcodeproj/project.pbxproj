@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 48;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -131,6 +131,15 @@
 		55E7C03C246D4AC000BE7DD9 /* metalRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = 55E7C03B246D4AC000BE7DD9 /* metalRenderer.m */; };
 		55E7C03E246D4E6900BE7DD9 /* openGLRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = 55E7C03D246D4E6900BE7DD9 /* openGLRenderer.m */; };
 		55FEB9202115EA9A00D8350C /* PIP.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 55FEB91F2115EA9A00D8350C /* PIP.framework */; };
+		D83E2DBC2D9B931C00880232 /* airplay_video.h in Headers */ = {isa = PBXBuildFile; fileRef = D83E2DB42D9B931C00880232 /* airplay_video.h */; };
+		D83E2DBD2D9B931C00880232 /* crypto.h in Headers */ = {isa = PBXBuildFile; fileRef = D83E2DB72D9B931C00880232 /* crypto.h */; };
+		D83E2DBE2D9B931C00880232 /* http_handlers.h in Headers */ = {isa = PBXBuildFile; fileRef = D83E2DB92D9B931C00880232 /* http_handlers.h */; };
+		D83E2DBF2D9B931C00880232 /* srp.h in Headers */ = {isa = PBXBuildFile; fileRef = D83E2DBA2D9B931C00880232 /* srp.h */; };
+		D83E2DC02D9B931C00880232 /* airplay_video.c in Sources */ = {isa = PBXBuildFile; fileRef = D83E2DB52D9B931C00880232 /* airplay_video.c */; };
+		D83E2DC12D9B931C00880232 /* crypto.c in Sources */ = {isa = PBXBuildFile; fileRef = D83E2DB82D9B931C00880232 /* crypto.c */; };
+		D83E2DC22D9B931C00880232 /* compat.c in Sources */ = {isa = PBXBuildFile; fileRef = D83E2DB62D9B931C00880232 /* compat.c */; };
+		D83E2DC32D9B931C00880232 /* srp.c in Sources */ = {isa = PBXBuildFile; fileRef = D83E2DBB2D9B931C00880232 /* srp.c */; };
+		D83E2DC92D9BC21500880232 /* OpenSSL in Frameworks */ = {isa = PBXBuildFile; productRef = D83E2DC82D9BC21500880232 /* OpenSSL */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -273,6 +282,14 @@
 		55F0590E281D407F00C0A809 /* receiver.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = receiver.h; sourceTree = "<group>"; };
 		55FEB91F2115EA9A00D8350C /* PIP.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PIP.framework; path = /System/Library/PrivateFrameworks/PIP.framework; sourceTree = "<group>"; };
 		55FEB9212115ECCC00D8350C /* pip.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = pip.h; sourceTree = "<group>"; };
+		D83E2DB42D9B931C00880232 /* airplay_video.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = airplay_video.h; sourceTree = "<group>"; };
+		D83E2DB52D9B931C00880232 /* airplay_video.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = airplay_video.c; sourceTree = "<group>"; };
+		D83E2DB62D9B931C00880232 /* compat.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = compat.c; sourceTree = "<group>"; };
+		D83E2DB72D9B931C00880232 /* crypto.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = crypto.h; sourceTree = "<group>"; };
+		D83E2DB82D9B931C00880232 /* crypto.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = crypto.c; sourceTree = "<group>"; };
+		D83E2DB92D9B931C00880232 /* http_handlers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = http_handlers.h; sourceTree = "<group>"; };
+		D83E2DBA2D9B931C00880232 /* srp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = srp.h; sourceTree = "<group>"; };
+		D83E2DBB2D9B931C00880232 /* srp.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = srp.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -290,6 +307,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D83E2DC92D9BC21500880232 /* OpenSSL in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -334,6 +352,14 @@
 				5547F66428144C5F00E22975 /* pairing.h */,
 				5547F66B28144C5F00E22975 /* playfair */,
 				5547F65628144C5E00E22975 /* raop_buffer.c */,
+				D83E2DB42D9B931C00880232 /* airplay_video.h */,
+				D83E2DB52D9B931C00880232 /* airplay_video.c */,
+				D83E2DB62D9B931C00880232 /* compat.c */,
+				D83E2DB72D9B931C00880232 /* crypto.h */,
+				D83E2DB82D9B931C00880232 /* crypto.c */,
+				D83E2DB92D9B931C00880232 /* http_handlers.h */,
+				D83E2DBA2D9B931C00880232 /* srp.h */,
+				D83E2DBB2D9B931C00880232 /* srp.c */,
 				5547F64328144C5E00E22975 /* raop_buffer.h */,
 				5547F65728144C5F00E22975 /* raop_handlers.h */,
 				5547F64228144C5E00E22975 /* raop_ntp.c */,
@@ -545,6 +571,10 @@
 				5547F6E028144C5F00E22975 /* netutils.h in Headers */,
 				5547F6B228144C5F00E22975 /* stream.h in Headers */,
 				5547F6C128144C5F00E22975 /* global.h in Headers */,
+				D83E2DBC2D9B931C00880232 /* airplay_video.h in Headers */,
+				D83E2DBD2D9B931C00880232 /* crypto.h in Headers */,
+				D83E2DBE2D9B931C00880232 /* http_handlers.h in Headers */,
+				D83E2DBF2D9B931C00880232 /* srp.h in Headers */,
 				5547F6A228144C5F00E22975 /* bigint.h in Headers */,
 				5547F6BC28144C5F00E22975 /* pairing.h in Headers */,
 				5547F6E328144C5F00E22975 /* fairplay.h in Headers */,
@@ -659,6 +689,9 @@
 				Base,
 			);
 			mainGroup = 55ABC4AF1FD2CB91005278DB;
+			packageReferences = (
+				D83E2DC72D9BC21500880232 /* XCLocalSwiftPackageReference "../OpenSSL-Package" */,
+			);
 			productRefGroup = 55ABC4B91FD2CB91005278DB /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -712,6 +745,10 @@
 				5547F6E628144C5F00E22975 /* http_response.c in Sources */,
 				5547F71628144D4E00E22975 /* ptrarray.c in Sources */,
 				5547F6B628144C5F00E22975 /* http.c in Sources */,
+				D83E2DC02D9B931C00880232 /* airplay_video.c in Sources */,
+				D83E2DC12D9B931C00880232 /* crypto.c in Sources */,
+				D83E2DC22D9B931C00880232 /* compat.c in Sources */,
+				D83E2DC32D9B931C00880232 /* srp.c in Sources */,
 				5547F70A28144D4E00E22975 /* hashtable.c in Sources */,
 				5547F6C228144C5F00E22975 /* aes_ctr.c in Sources */,
 				5547F6B728144C5F00E22975 /* llhttp.c in Sources */,
@@ -777,8 +814,11 @@
 					"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks",
 				);
 				INFOPLIST_FILE = pip/info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 10.12;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.boggyb.PiP;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -798,8 +838,11 @@
 					"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks",
 				);
 				INFOPLIST_FILE = pip/info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 10.12;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.boggyb.PiP;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -974,6 +1017,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		D83E2DC72D9BC21500880232 /* XCLocalSwiftPackageReference "../OpenSSL-Package" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../OpenSSL-Package";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D83E2DC82D9BC21500880232 /* OpenSSL */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenSSL;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 55ABC4B01FD2CB91005278DB /* Project object */;
 }

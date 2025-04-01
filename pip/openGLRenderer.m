@@ -37,12 +37,12 @@
 static CIContext* ciContext = nil;
 static NSOpenGLContext* openGLContext = nil;
 
-static NSOpenGLContext* getGLContext(){
+static NSOpenGLContext* getGLContext(void){
   if(!openGLContext) openGLContext = [[NSOpenGLContext alloc] initWithFormat:[NSOpenGLView defaultPixelFormat] shareContext:nil];
   return openGLContext;
 }
 
-static CIContext* getCIContext(){
+static CIContext* getCIContext(void){
   if(!ciContext) ciContext = [CIContext contextWithCGLContext:openGLContext.CGLContextObj pixelFormat:nil colorSpace:nil options:nil];
   return ciContext;
 }
