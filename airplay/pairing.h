@@ -33,6 +33,8 @@
 #define GCM_AUTHTAG_SIZE 16
 #define SHA512_KEY_LENGTH 64
 
+# define SHA512_DIGEST_LENGTH    64
+
 typedef struct pairing_s pairing_t;
 typedef struct pairing_session_s pairing_session_t;
 

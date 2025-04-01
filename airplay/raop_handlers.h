@@ -22,7 +22,7 @@
 #include "utils.h"
 #include <ctype.h>
 #include <stdlib.h>
-#include <plist/plist.h>
+#include "plist/plist.h"
 #define AUDIO_SAMPLE_RATE 44100   /* all supported AirPlay audio format use this sample rate */
 #define SECOND_IN_USECS 1000000
 

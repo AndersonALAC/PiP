@@ -19,7 +19,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
-#include <openssl/sha.h> // for SHA512_DIGEST_LENGTH
+// #include <openssl/sha.h> // for SHA512_DIGEST_LENGTH
 
 #include "pairing.h"
 #include "crypto.h"
