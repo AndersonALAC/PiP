@@ -10,6 +10,9 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
+ *
+ *==================================================================
+ * modified by fduncanh 2022
  */
 
 #include <stdlib.h>
@@ -50,17 +53,17 @@ netutils_cleanup()
 }
 
 unsigned char *
-netutils_get_address(void *sockaddr, int *length)
+netutils_get_address(void *sockaddr, int *length, unsigned int *zone_id)
 {
     unsigned char ipv4_prefix[] = { 0,0,0,0,0,0,0,0,0,0,255,255 };
     struct sockaddr *address = sockaddr;
 
     assert(address);
     assert(length);
-
+    assert(zone_id);
     if (address->sa_family == AF_INET) {
         struct sockaddr_in *sin;
-
+        *zone_id = 0;
         sin = (struct sockaddr_in *)address;
         *length = sizeof(sin->sin_addr.s_addr);
         return (unsigned char *)&sin->sin_addr.s_addr;
@@ -70,9 +73,11 @@ netutils_get_address(void *sockaddr, int *length)
         sin6 = (struct sockaddr_in6 *)address;
         if (!memcmp(sin6->sin6_addr.s6_addr, ipv4_prefix, 12)) {
             /* Actually an embedded IPv4 address */
+            *zone_id = 0;
             *length = sizeof(sin6->sin6_addr.s6_addr)-12;
             return (sin6->sin6_addr.s6_addr+12);
         }
+        *zone_id = (unsigned int) sin6->sin6_scope_id;
         *length = sizeof(sin6->sin6_addr.s6_addr);
         return sin6->sin6_addr.s6_addr;
     }
@@ -92,8 +97,12 @@ netutils_init_socket(unsigned short *port, int use_ipv6, int use_udp)
     socklen_t socklen;
     int server_fd;
     int ret;
+#ifndef _WIN32
     int reuseaddr = 1;
-
+#else
+    const char reuseaddr = 1;
+#endif
+    
     assert(port);
 
     server_fd = socket(family, type, proto);
@@ -109,14 +118,14 @@ netutils_init_socket(unsigned short *port, int use_ipv6, int use_udp)
     memset(&saddr, 0, sizeof(saddr));
     if (use_ipv6) {
         struct sockaddr_in6 *sin6ptr = (struct sockaddr_in6 *)&saddr;
-        int v6only = 1;
 
         /* Initialize sockaddr for bind */
         sin6ptr->sin6_family = family;
         sin6ptr->sin6_addr = in6addr_any;
         sin6ptr->sin6_port = htons(*port);
 
-#ifndef WIN32
+#ifndef _WIN32
+        int v6only = 1;
         /* Make sure we only listen to IPv6 addresses */
         setsockopt(server_fd, IPPROTO_IPV6, IPV6_V6ONLY,
                    (char *) &v6only, sizeof(v6only));

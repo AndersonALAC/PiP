@@ -10,16 +10,16 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
+ *
+ *================================================================
+ * modified by fduncanh 2022
  */
 
 #include "mirror_buffer.h"
 #include "raop_rtp.h"
 #include "raop_rtp.h"
 #include <stdint.h>
-
-#include "aes.h"
-#include "ed25519/sha512.h"
-
+#include "crypto.h"
 #include "compat.h"
 #include <math.h>
 #include <stdlib.h>
@@ -28,10 +28,9 @@
 #include <stdio.h>
 #include <inttypes.h>
 
-//#define DUMP_KEI_IV
 struct mirror_buffer_s {
     logger_t *logger;
-    struct AES_ctx aes_ctx;
+    aes_ctx_t *aes_ctx;
     int nextDecryptCount;
     uint8_t og[16];
     /* audio aes key is used in a hash for the video aes key and iv */
@@ -50,29 +49,22 @@ mirror_buffer_init_aes(mirror_buffer_t *mirror_buffer, const uint64_t *streamCon
     /* AES key and IV */
     // Need secondary processing to use
     
-    sprintf((char*) aeskey_video, "AirPlayStreamKey%" PRIu64, *streamConnectionID);
-    sprintf((char*) aesiv_video, "AirPlayStreamIV%" PRIu64, *streamConnectionID);
+    snprintf((char*) aeskey_video, sizeof(aeskey_video), "AirPlayStreamKey%" PRIu64, *streamConnectionID);
+    snprintf((char*) aesiv_video, sizeof(aesiv_video), "AirPlayStreamIV%" PRIu64, *streamConnectionID);
 
-    sha512_context ctx;
-    sha512_init(&ctx);
-    sha512_update(&ctx, aeskey_video, strlen((char*) aeskey_video));
-    sha512_update(&ctx, mirror_buffer->aeskey_audio, RAOP_AESKEY_LEN);
-    sha512_final(&ctx, aeskey_video);
+    sha_ctx_t *ctx = sha_init();
+    sha_update(ctx, aeskey_video, strlen((char*) aeskey_video));
+    sha_update(ctx, mirror_buffer->aeskey_audio, RAOP_AESKEY_LEN);
+    sha_final(ctx, aeskey_video, NULL);
 
-    sha512_init(&ctx);
-    sha512_update(&ctx, aesiv_video, strlen((char*) aesiv_video));
-    sha512_update(&ctx, mirror_buffer->aeskey_audio, RAOP_AESKEY_LEN);
-    sha512_final(&ctx, aesiv_video);
+    sha_reset(ctx);
+    sha_update(ctx, aesiv_video, strlen((char*) aesiv_video));
+    sha_update(ctx, mirror_buffer->aeskey_audio, RAOP_AESKEY_LEN);
+    sha_final(ctx, aesiv_video, NULL);
+    sha_destroy(ctx);
 
     // Need to be initialized externally
-    AES_init_ctx_iv(&mirror_buffer->aes_ctx, aeskey_video, aesiv_video);
-
-#ifdef DUMP_KEI_IV
-    FILE* keyfile = fopen("/sdcard/111.keyiv", "wb");
-    fwrite(aeskey_video, 16, 1, keyfile);
-    fwrite(aesiv_video, 16, 1, keyfile);
-    fclose(keyfile);
-#endif
+    mirror_buffer->aes_ctx = aes_ctr_init(aeskey_video, aesiv_video);
 }
 
 mirror_buffer_t *
@@ -100,11 +92,12 @@ void mirror_buffer_decrypt(mirror_buffer_t *mirror_buffer, unsigned char* input,
     // Handling encrypted bytes
     int encryptlen = ((inputLen - mirror_buffer->nextDecryptCount) / 16) * 16;
     // Aes decryption
-    AES_CTR_xcrypt_buffer(&mirror_buffer->aes_ctx, input + mirror_buffer->nextDecryptCount, encryptlen);
-
+    aes_ctr_start_fresh_block(mirror_buffer->aes_ctx);
+    aes_ctr_decrypt(mirror_buffer->aes_ctx, input + mirror_buffer->nextDecryptCount,
+                    input + mirror_buffer->nextDecryptCount, encryptlen);
     // Copy to output
     memcpy(output + mirror_buffer->nextDecryptCount, input + mirror_buffer->nextDecryptCount, encryptlen);
-    int outputlength = mirror_buffer->nextDecryptCount + encryptlen;
+    // int outputlength = mirror_buffer->nextDecryptCount + encryptlen;
     // Processing remaining length
     int restlen = (inputLen - mirror_buffer->nextDecryptCount) % 16;
     int reststart = inputLen - restlen;
@@ -112,11 +105,11 @@ void mirror_buffer_decrypt(mirror_buffer_t *mirror_buffer, unsigned char* input,
     if (restlen > 0) {
         memset(mirror_buffer->og, 0, 16);
         memcpy(mirror_buffer->og, input + reststart, restlen);
-        AES_CTR_xcrypt_buffer(&mirror_buffer->aes_ctx, mirror_buffer->og, 16);
+        aes_ctr_decrypt(mirror_buffer->aes_ctx, mirror_buffer->og, mirror_buffer->og, 16);
         for (int j = 0; j < restlen; j++) {
             output[reststart + j] = mirror_buffer->og[j];
         }
-        outputlength += restlen;
+        //outputlength += restlen;
         mirror_buffer->nextDecryptCount = 16 - restlen;// Difference 16-6=10 bytes
     }
 }
@@ -125,6 +118,7 @@ void
 mirror_buffer_destroy(mirror_buffer_t *mirror_buffer)
 {
     if (mirror_buffer) {
+        aes_ctr_destroy(mirror_buffer->aes_ctx);
         free(mirror_buffer);
     }
 }

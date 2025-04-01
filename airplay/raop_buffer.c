@@ -10,6 +10,9 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
+ *
+ *==================================================================
+ * modified by fduncanh 2021-2023
  */
 
 #include <stdlib.h>
@@ -23,12 +26,12 @@
 #include "raop_buffer.h"
 #include "raop_rtp.h"
 
-#include "crypto/crypto.h"
-
+#include "crypto.h"
 #include "compat.h"
 #include "stream.h"
 #include "global.h"
 #include "utils.h"
+#include "byteutils.h"
 
 #define RAOP_BUFFER_LENGTH 32
 
@@ -38,7 +41,8 @@ typedef struct {
 
     /* RTP header */
     unsigned short seqnum;
-    uint64_t timestamp;
+    uint64_t rtp_timestamp;
+    uint64_t ntp_timestamp;
 
     /* Payload data */
     unsigned int payload_size;
@@ -48,10 +52,7 @@ typedef struct {
 struct raop_buffer_s {
     logger_t *logger;
     /* AES CTX used for decryption */
-    // aes_ctx_t *aes_ctx;
-
-    unsigned char aeskey[RAOP_AESKEY_LEN];
-    unsigned char aesiv[RAOP_AESIV_LEN];
+    aes_ctx_t *aes_ctx;
 
     /* First and last seqnum */
     int is_empty;
@@ -61,14 +62,6 @@ struct raop_buffer_s {
     /* RTP buffer entries */
     raop_buffer_entry_t entries[RAOP_BUFFER_LENGTH];
 };
-
-//#define DUMP_AUDIO
-
-#ifdef DUMP_AUDIO
-static FILE* file_aac = NULL;
-static FILE* file_source = NULL;
-static FILE* file_keyiv = NULL;
-#endif
 
 raop_buffer_t *
 raop_buffer_init(logger_t *logger,
@@ -84,18 +77,7 @@ raop_buffer_init(logger_t *logger,
     }
     raop_buffer->logger = logger;
     // Need to be initialized internally
-    // raop_buffer->aes_ctx = aes_cbc_init(aeskey, aesiv, AES_DECRYPT);
-
-    memcpy(raop_buffer->aeskey, aeskey, RAOP_AESKEY_LEN);
-    memcpy(raop_buffer->aesiv, aesiv, RAOP_AESIV_LEN);
-
-#ifdef DUMP_AUDIO
-    if (file_keyiv != NULL) {
-        fwrite(aeskey, 16, 1, file_keyiv);
-        fwrite(aesiv, 16, 1, file_keyiv);
-        fclose(file_keyiv);
-    }
-#endif
+    raop_buffer->aes_ctx = aes_cbc_init(aeskey, aesiv, AES_DECRYPT);
 
     for (int i = 0; i < RAOP_BUFFER_LENGTH; i++) {
         raop_buffer_entry_t *entry = &raop_buffer->entries[i];
@@ -119,18 +101,9 @@ raop_buffer_destroy(raop_buffer_t *raop_buffer)
     }
 
     if (raop_buffer) {
-        // aes_cbc_destroy(raop_buffer->aes_ctx);
+        aes_cbc_destroy(raop_buffer->aes_ctx);
         free(raop_buffer);
     }
-
-#ifdef DUMP_AUDIO
-    if (file_aac != NULL) {
-        fclose(file_aac);
-    }
-    if (file_source != NULL) {
-        fclose(file_source);
-    }
-#endif
 
 }
 
@@ -145,39 +118,21 @@ raop_buffer_decrypt(raop_buffer_t *raop_buffer, unsigned char *data, unsigned ch
 {
     assert(raop_buffer);
     int encryptedlen;
-#ifdef DUMP_AUDIO
-    if (file_aac == NULL) {
-        file_aac = fopen("/Volumes/awsm/tmp/Airplay.aac", "wb");
-        file_source = fopen("/Volumes/awsm/tmp/Airplay.source", "wb");
-        file_keyiv = fopen("/Volumes/awsm/tmp/Airplay.keyiv", "wb");
-    }
-    // Undecrypted file
-    if (file_source != NULL) {
-        fwrite(&data[12], payload_size, 1, file_source);
-    }
-#endif
-
     if (DECRYPTION_TEST) {
         char *str = utils_data_to_string(data,12,12);
-        printf("encrypted 12 byte header %s", str);
+        logger_log(raop_buffer->logger, LOGGER_INFO, "encrypted 12 byte header %s", str);
         free(str);
         if (payload_size) {
             str = utils_data_to_string(&data[12],16,16);
-            printf("len %d before decryption:\n%s", payload_size, str);
+            logger_log(raop_buffer->logger, LOGGER_INFO, "len %d before decryption:\n%s", payload_size, str);
             free(str);
         }
     }
     encryptedlen = payload_size / 16*16;
     memset(output, 0, payload_size);
 
-    AES_CTX aes_ctx;
-    AES_set_key(&aes_ctx, raop_buffer->aeskey, raop_buffer->aesiv, AES_MODE_128);
-    AES_convert_key(&aes_ctx);
-    AES_cbc_decrypt(&aes_ctx, &data[12], output, encryptedlen);
-
-    // raop_buffer->aes_ctx = aes_cbc_init(aeskey, aesiv, AES_DECRYPT);
-    // aes_cbc_decrypt(raop_buffer->aes_ctx, &data[12], output, encryptedlen);
-    // aes_cbc_reset(raop_buffer->aes_ctx);
+    aes_cbc_decrypt(raop_buffer->aes_ctx, &data[12], output, encryptedlen);
+    aes_cbc_reset(raop_buffer->aes_ctx);
 
     memcpy(output + encryptedlen, &data[12 + encryptedlen], payload_size - encryptedlen);
     *outputlen = payload_size;
@@ -192,40 +147,34 @@ raop_buffer_decrypt(raop_buffer_t *raop_buffer, unsigned char *data, unsigned ch
         case 0x20:
 	    break;
         default:
-            printf("***ERROR AUDIO FRAME  IS NOT AAC_ELD OR ALAC\n");
+            logger_log(raop_buffer->logger, LOGGER_INFO, "***ERROR AUDIO FRAME  IS NOT AAC_ELD OR ALAC");
 	    break;
         }
         if (DECRYPTION_TEST == 2) {
-            printf("decrypted audio frame, len = %d\n", *outputlen);
+            logger_log(raop_buffer->logger, LOGGER_INFO, "decrypted audio frame, len = %d", *outputlen);
             char *str = utils_data_to_string(output,payload_size,16);
-	    printf("%s",str);
-            printf("\n");
+            logger_log(raop_buffer->logger, LOGGER_INFO,"%s",str);
             free(str);
         } else {
             char *str = utils_data_to_string(output,16,16);
-            printf("%d after  \n%s\n", payload_size, str);
+            logger_log(raop_buffer->logger, LOGGER_INFO, "%d after  \n%s", payload_size, str);
             free(str);
         }
     }
-#ifdef DUMP_AUDIO
-    // Decrypted file
-    if (file_aac != NULL) {
-        fwrite(output, payload_size, 1, file_aac);
-    }
-#endif
-
     return 1;
 }
 
 int
-raop_buffer_enqueue(raop_buffer_t *raop_buffer, unsigned char *data, unsigned short datalen, uint64_t timestamp, int use_seqnum) {
+raop_buffer_enqueue(raop_buffer_t *raop_buffer, unsigned char *data, unsigned short datalen, uint64_t *ntp_timestamp, uint64_t *rtp_timestamp, int use_seqnum) {
+    unsigned char empty_packet_marker[] = { 0x00, 0x68, 0x34, 0x00 };
     assert(raop_buffer);
 
     /* Check packet data length is valid */
     if (datalen < 12 || datalen > RAOP_PACKET_LEN) {
         return -1;
     }
-    if (datalen == 16 && data[12] == 0x0 && data[13] == 0x68 && data[14] == 0x34 && data[15] == 0x0) {
+    /* before time is synchronized, some empty data packets are sent */
+    if (datalen == 16 && !memcmp(&data[12], empty_packet_marker, 4)) {
         return 0;
     }
     int payload_size = datalen - 12;
@@ -233,7 +182,7 @@ raop_buffer_enqueue(raop_buffer_t *raop_buffer, unsigned char *data, unsigned sh
     /* Get correct seqnum for the packet */
     unsigned short seqnum;
     if (use_seqnum) {
-        seqnum = (data[2] << 8) | data[3];
+        seqnum = byteutils_get_short_be(data, 2);
     } else {
         seqnum = raop_buffer->first_seqnum;
     }
@@ -257,7 +206,8 @@ raop_buffer_enqueue(raop_buffer_t *raop_buffer, unsigned char *data, unsigned sh
 
     /* Update the raop_buffer entry header */
     entry->seqnum = seqnum;
-    entry->timestamp = timestamp;
+    entry->rtp_timestamp = *rtp_timestamp;
+    entry->ntp_timestamp = *ntp_timestamp;
     entry->filled = 1;
 
     entry->payload_data = malloc(payload_size);
@@ -278,7 +228,7 @@ raop_buffer_enqueue(raop_buffer_t *raop_buffer, unsigned char *data, unsigned sh
 }
 
 void *
-raop_buffer_dequeue(raop_buffer_t *raop_buffer, unsigned int *length, uint64_t *timestamp, int no_resend) {
+raop_buffer_dequeue(raop_buffer_t *raop_buffer, unsigned int *length, uint64_t *ntp_timestamp, uint64_t *rtp_timestamp, unsigned short *seqnum, int no_resend) {
     assert(raop_buffer);
 
     /* Calculate number of entries in the current buffer */
@@ -310,7 +260,9 @@ raop_buffer_dequeue(raop_buffer_t *raop_buffer, unsigned int *length, uint64_t *
     entry->filled = 0;
 
     /* Return entry payload buffer */
-    *timestamp = entry->timestamp;
+    *rtp_timestamp = entry->rtp_timestamp;
+    *ntp_timestamp = entry->ntp_timestamp;
+    *seqnum = entry->seqnum;
     *length = entry->payload_size;
     entry->payload_size = 0;
     void* data = entry->payload_data;
@@ -323,19 +275,19 @@ void raop_buffer_handle_resends(raop_buffer_t *raop_buffer, raop_resend_cb_t res
     assert(resend_cb);
 
     if (seqnum_cmp(raop_buffer->first_seqnum, raop_buffer->last_seqnum) < 0) {
-        int seqnum, count;
-
+        unsigned short seqnum, count = 0;
+        logger_log(raop_buffer->logger, LOGGER_DEBUG, "raop_buffer_handle_resends first_seqnum=%u last seqnum=%u",
+                   raop_buffer->first_seqnum, raop_buffer->last_seqnum);
         for (seqnum = raop_buffer->first_seqnum; seqnum_cmp(seqnum, raop_buffer->last_seqnum) < 0; seqnum++) {
             raop_buffer_entry_t *entry = &raop_buffer->entries[seqnum % RAOP_BUFFER_LENGTH];
             if (entry->filled) {
                 break;
             }
+	    count++;
         }
-        if (seqnum_cmp(seqnum, raop_buffer->first_seqnum) == 0) {
-            return;
+        if (count){
+            resend_cb(opaque, raop_buffer->first_seqnum, count);
         }
-        count = seqnum_cmp(seqnum, raop_buffer->first_seqnum);
-        resend_cb(opaque, raop_buffer->first_seqnum, count);
     }
 }
 
@@ -345,6 +297,7 @@ void raop_buffer_flush(raop_buffer_t *raop_buffer, int next_seq) {
     for (int i = 0; i < RAOP_BUFFER_LENGTH; i++) {
         if (raop_buffer->entries[i].payload_data) {
             free(raop_buffer->entries[i].payload_data);
+            raop_buffer->entries[i].payload_data = NULL;   
             raop_buffer->entries[i].payload_size = 0;
         }
         raop_buffer->entries[i].filled = 0;

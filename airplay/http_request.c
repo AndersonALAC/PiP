@@ -10,6 +10,9 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
+ *
+ *==================================================================
+ * modified by fduncanh 2021
  */
 
 #include <stdlib.h>
@@ -24,8 +27,10 @@ struct http_request_s {
     llhttp_t parser;
     llhttp_settings_t parser_settings;
 
+    bool is_reverse;  // if true, this is a reverse-response from client
     const char *method;
     char *url;
+    char protocol[9];
 
     char **headers;
     int headers_size;
@@ -48,6 +53,9 @@ on_url(llhttp_t *parser, const char *at, size_t length)
 
     request->url[urllen] = '\0';
     strncat(request->url, at, length);
+
+    strncpy(request->protocol, at + length + 1, 8);
+
     return 0;
 }
 
@@ -153,7 +161,7 @@ http_request_init(void)
 
     llhttp_init(&request->parser, HTTP_REQUEST, &request->parser_settings);
     request->parser.data = request;
-
+    request->is_reverse = false;
     return request;
 }
 
@@ -180,8 +188,11 @@ http_request_add_data(http_request_t *request, const char *data, int datalen)
 
     assert(request);
 
-    ret = llhttp_execute(&request->parser,
-                              data, datalen);
+    ret = llhttp_execute(&request->parser, data, datalen);
+
+    /* support for "Upgrade" to reverse http ("PTTH/1.0") protocol */
+    llhttp_resume_after_upgrade(&request->parser);
+
     return ret;
 }
 
@@ -196,6 +207,9 @@ int
 http_request_has_error(http_request_t *request)
 {
     assert(request);
+    if (request->is_reverse) {
+        return 0;
+    }
     return (llhttp_get_errno(&request->parser) != HPE_OK);
 }
 
@@ -203,6 +217,9 @@ const char *
 http_request_get_error_name(http_request_t *request)
 {
     assert(request);
+    if (request->is_reverse) {
+        return NULL;
+    }
     return llhttp_errno_name(llhttp_get_errno(&request->parser));
 }
 
@@ -210,6 +227,9 @@ const char *
 http_request_get_error_description(http_request_t *request)
 {
     assert(request);
+    if (request->is_reverse) {
+        return NULL;
+    }
     return llhttp_get_error_reason(&request->parser);
 }
 
@@ -217,6 +237,9 @@ const char *
 http_request_get_method(http_request_t *request)
 {
     assert(request);
+    if (request->is_reverse) {
+        return NULL;
+    }
     return request->method;
 }
 
@@ -224,7 +247,20 @@ const char *
 http_request_get_url(http_request_t *request)
 {
     assert(request);
+    if (request->is_reverse) {
+        return NULL;
+    }
     return request->url;
+}
+
+const char *
+http_request_get_protocol(http_request_t *request)
+{
+    assert(request);
+    if (request->is_reverse) {
+        return NULL;
+    }
+    return request->protocol;
 }
 
 const char *
@@ -233,6 +269,9 @@ http_request_get_header(http_request_t *request, const char *name)
     int i;
 
     assert(request);
+    if (request->is_reverse) {
+        return NULL;
+    }
 
     for (i=0; i<request->headers_size; i+=2) {
         if (!strcmp(request->headers[i], name)) {
@@ -246,7 +285,6 @@ const char *
 http_request_get_data(http_request_t *request, int *datalen)
 {
     assert(request);
-
     if (datalen) {
         *datalen = request->datalen;
     }
@@ -260,6 +298,10 @@ http_request_get_header_string(http_request_t *request, char **header_str)
         *header_str = NULL;
         return 0;
     }
+    if (request->is_reverse) {
+        *header_str = NULL;
+        return 0;
+    }    
     int len = 0;
     for (int i = 0; i < request->headers_size; i++) {
         len += strlen(request->headers[i]);
@@ -273,17 +315,30 @@ http_request_get_header_string(http_request_t *request, char **header_str)
     assert(str);
     *header_str = str;
     char *p = str;
+    int n = len + 1;
     for (int i = 0; i < request->headers_size; i++) {
-        sprintf(p,"%s", request->headers[i]);
-        p += strlen(request->headers[i]);
+        int hlen = strlen(request->headers[i]); 
+        snprintf(p, n, "%s", request->headers[i]);
+        n -= hlen;
+        p += hlen;
         if (i%2 == 0) {
-            sprintf(p, ": ");
-            p +=2;
+            snprintf(p, n, ": ");
+            n -= 2;
+            p += 2;
         } else {
-            sprintf(p, "\n");
+	    snprintf(p, n, "\n");
+            n--;
             p++;
         }
     }
     assert(p == &(str[len]));
     return len;
+}
+
+bool http_request_is_reverse(http_request_t *request) {
+    return request->is_reverse;
+}
+
+void http_request_set_reverse(http_request_t *request) {
+    request->is_reverse = true;
 }

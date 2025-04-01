@@ -10,6 +10,9 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
+ *
+ *=================================================================
+ * modified by fduncanh 2022-2023
  */
 
 #ifndef AIRPLAYSERVER_STREAM_H
@@ -18,26 +21,24 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef struct{
-  uint32_t sr;
-  uint8_t ct;
-  uint16_t spf;
-  uint64_t audioFormat;
-  uint8_t isMedia;
-  uint8_t usingScreen;
-} audio_format_info;
-
 typedef struct {
+    bool is_h265;
     int nal_count;
     unsigned char *data;
     int data_len;
-    uint64_t pts;
-} h264_decode_struct;
+    uint64_t ntp_time_local;
+    uint64_t ntp_time_remote;
+} video_decode_struct;
 
 typedef struct {
     unsigned char *data;
+    unsigned char ct;
     int data_len;
-    uint64_t pts;
-} aac_decode_struct;
+    int sync_status;
+    uint64_t ntp_time_local;
+    uint64_t ntp_time_remote;
+    uint64_t rtp_time;
+    unsigned short seqnum;
+} audio_decode_struct;
 
 #endif //AIRPLAYSERVER_STREAM_H
