@@ -176,7 +176,7 @@ typedef struct{
 -(void)setVolume:(float)volume{
   if(!outputUnit) return;
   OSStatus status = AudioUnitSetParameter(outputUnit, kHALOutputParam_Volume, kAudioUnitScope_Output, 0, volume, 0);
-//  NSLog(@"setVolume AudioUnitSetParameter: %d", status);
+  NSLog(@"setVolume AudioUnitSetParameter: %d", status);
 }
 
 OSStatus AudioConverterCallback(AudioConverterRef inAudioConverter, UInt32* ioNumberDataPackets, AudioBufferList* ioData, AudioStreamPacketDescription **outDataPacketDescription, void* inUserData){

@@ -184,6 +184,18 @@ static void video_flush (void *cls){
   NSLog(@"video_flush cls: %p", cls);
 }
 
+static void video_pause (void *cls){
+  NSLog(@"video_pause cls: %p", cls);
+}
+
+static void video_resume (void *cls){
+  NSLog(@"video_pause cls: %p", cls);
+}
+
+static void video_reset (void *cls){
+    
+}
+
 static void audio_set_volume (void *cls, float volume_db){
   raop_connection_t* conn = (raop_connection_t*)cls;
   if(!conn || !conn->usr_data) return;
@@ -212,22 +224,26 @@ static void audio_set_progress(void *cls, unsigned int start, unsigned int curr,
   NSLog(@"audio_set_progress start: %u, curr: %u, end: %u", start, curr, end);
 }
 
-//static void audio_get_format(void *cls, unsigned char *ct, unsigned short *spf, bool *usingScreen, bool *isMedia, uint64_t *audioFormat) {
-//  raop_connection_t* conn = (raop_connection_t*)cls;
-//  if(!conn || !conn->usr_data) return;
-//  
-//  NSLog(@"ct=%hhu spf=%hu usingScreen=%d isMedia=%d audioFormat=0x%llx", *ct, *spf, *usingScreen, *isMedia, *audioFormat);
-//  
-//  UInt32 format;
-//  switch(*ct){
-//    case 2: format = kAudioFormatAppleLossless; break;
-//    case 4: format = kAudioFormatMPEG4AAC; break;
-//    case 8: format = kAudioFormatMPEG4AAC_ELD; break;
-//    default: return;
-//  }
-//  Window* window = (__bridge Window *)(conn->usr_data);
+static void audio_get_format(void *cls, unsigned char *ct, unsigned short *spf, bool *usingScreen, bool *isMedia, uint64_t *audioFormat) {
+  raop_connection_t* conn = (raop_connection_t*)cls;
+  if(!conn || !conn->usr_data) return;
+  
+  NSLog(@"ct=%hhu spf=%hu usingScreen=%d isMedia=%d audioFormat=0x%llx", *ct, *spf, *usingScreen, *isMedia, *audioFormat);
+  
+  UInt32 format;
+  switch(*ct){
+    case 2: format = kAudioFormatAppleLossless; break;
+    case 4: format = kAudioFormatMPEG4AAC; break;
+    case 8: format = kAudioFormatMPEG4AAC_ELD; break;
+    default: return;
+  }
+  Window* window = (__bridge Window *)(conn->usr_data);
 //  [window setAudioInputFormat:format withsampleRate:*sr andChannels:2 andSPF:*spf];
-//}
+}
+
+static void video_set_codec(void *cls, video_codec_t codec){
+    
+}
 
 static void video_report_size(void *cls, float *width_source, float *height_source, float *width, float *height){
   raop_connection_t* conn = (raop_connection_t*)cls;
@@ -259,18 +275,22 @@ void airplay_receiver_start(void){
   raop_callbacks_t raop_cbs = {
     .conn_init = conn_init,
     .conn_destroy = conn_destroy,
-//    .conn_reset = conn_reset,
-//    .conn_teardown = conn_teardown,
-//    .audio_flush = audio_flush,
-//    .video_flush = video_flush,
+    .conn_reset = conn_reset,
+    .conn_teardown = conn_teardown,
+    .audio_flush = audio_flush,
+    .video_flush = video_flush,
     .audio_process = audio_process,
     .video_process = video_process,
+    .video_pause = video_pause,
+    .video_resume = video_resume,
     .audio_set_volume = audio_set_volume,
+    .video_set_codec = video_set_codec,
+    .video_reset = video_reset,
 //    .audio_set_metadata = audio_set_metadata,
 //    .audio_set_coverart = audio_set_coverart,
 //    .audio_remote_control_id = audio_remote_control_id,
 //    .audio_set_progress = audio_set_progress,
-//    .audio_get_format = audio_get_format,
+    .audio_get_format = audio_get_format,
 //    .video_report_size = video_report_size,
     .cls = NULL  // This will be set to the connection pointer when callbacks are invoked
   };
@@ -303,7 +323,7 @@ void airplay_receiver_start(void){
   raop_set_log_level(raop, LOGGER_DEBUG);
     
   int nohold = 0;
-  char* keyfile = "mmm";
+  char* keyfile = "";
 
   int error;
   uint8_t hw_addr[] = {0xa,0xb,0x0,0x0,0xb,0xa};
@@ -314,7 +334,7 @@ void airplay_receiver_start(void){
                                           hw_addr[0], hw_addr[1], hw_addr[2],
                                           hw_addr[3], hw_addr[4], hw_addr[5]];
 
-  char* mac_address_cstr = [mac_address UTF8String];  // Convert NSMutableString to C-string
+  char* mac_address_cstr = [mac_address UTF8String];
   raop_init2(raop, nohold, mac_address_cstr, keyfile);
   
   unsigned short port = raop_get_port(raop);
@@ -328,12 +348,58 @@ void airplay_receiver_start(void){
 
   struct utsname buf;
   if(uname(&buf) == 0) rc += snprintf(server_name + rc, sizeof(server_name) - 1 - rc, "@%s", buf.nodename);
+  
   dnssd = dnssd_init(server_name, rc, (char*)hw_addr, sizeof(hw_addr), &error, 0);
   if(error){
     NSLog(@"Could not initialize dnssd library, error: %d", error);
     airplay_receiver_stop();
     return;
   }
+  // hls support 
+  // dnssd_set_airplay_features(dnssd, 0, 1);
+  // dnssd_set_airplay_features(dnssd, 4, 1);
+  dnssd_set_airplay_features(dnssd,  0, 0); // AirPlay video supported 
+  dnssd_set_airplay_features(dnssd,  1, 1); // photo supported 
+  dnssd_set_airplay_features(dnssd,  2, 1); // video protected with FairPlay DRM 
+  dnssd_set_airplay_features(dnssd,  3, 0); // volume control supported for videos
+  dnssd_set_airplay_features(dnssd,  8, 0); // screen rotation  supported 
+
+  dnssd_set_airplay_features(dnssd,  4, 0); // http live streaming (HLS) supported
+  dnssd_set_airplay_features(dnssd,  5, 1); // slideshow supported 
+  dnssd_set_airplay_features(dnssd,  6, 1); // 
+  dnssd_set_airplay_features(dnssd,  7, 1); // mirroring supported
+
+  dnssd_set_airplay_features(dnssd,  8, 0); // screen rotation  supported 
+  dnssd_set_airplay_features(dnssd,  9, 1); // audio supported 
+  dnssd_set_airplay_features(dnssd, 10, 1); //  
+  dnssd_set_airplay_features(dnssd, 11, 1); // audio packet redundancy supported
+
+  dnssd_set_airplay_features(dnssd, 12, 1); // FaiPlay secure auth supported 
+  dnssd_set_airplay_features(dnssd, 13, 1); // photo preloading  supported 
+  dnssd_set_airplay_features(dnssd, 14, 1); // Authentication bit 4:  FairPlay authentication
+  dnssd_set_airplay_features(dnssd, 15, 1); // Metadata bit 1 support:   Artwork 
+
+  dnssd_set_airplay_features(dnssd, 16, 1); // Metadata bit 2 support:  Soundtrack  Progress 
+  dnssd_set_airplay_features(dnssd, 17, 1); // Metadata bit 0 support:  Text (DAACP) "Now Playing" info.
+  dnssd_set_airplay_features(dnssd, 18, 1); // Audio format 1 support:   
+  dnssd_set_airplay_features(dnssd, 19, 1); // Audio format 2 support: must be set for AirPlay 2 multiroom audio 
+
+  dnssd_set_airplay_features(dnssd, 20, 1); // Audio format 3 support: must be set for AirPlay 2 multiroom audio 
+  dnssd_set_airplay_features(dnssd, 21, 1); // Audio format 4 support:
+  dnssd_set_airplay_features(dnssd, 22, 1); // Authentication type 4: FairPlay authentication
+  dnssd_set_airplay_features(dnssd, 23, 0); // Authentication type 1: RSA Authentication
+
+  dnssd_set_airplay_features(dnssd, 24, 0); // 
+  dnssd_set_airplay_features(dnssd, 25, 1); // 
+  dnssd_set_airplay_features(dnssd, 26, 0); // Has Unified Advertiser info
+  dnssd_set_airplay_features(dnssd, 27, 1); // Supports Legacy Pairing
+
+  dnssd_set_airplay_features(dnssd, 28, 1); //  
+  dnssd_set_airplay_features(dnssd, 29, 0); // 
+  dnssd_set_airplay_features(dnssd, 30, 1); // RAOP support: with this bit set, the AirTunes service is not required. 
+  dnssd_set_airplay_features(dnssd, 31, 0); // 
+
+  dnssd_set_airplay_features(dnssd, 42, 1); // h.265 support
 
   raop_set_dnssd(raop, dnssd);
   dnssd_register_raop(dnssd, port);

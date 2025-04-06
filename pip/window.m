@@ -237,7 +237,7 @@ static NSImage* invert_image(NSImage* img){
   return  nsImage;
 }
 
-static bool is_dark_mode(){
+static bool is_dark_mode(void){
   return [[[NSUserDefaults standardUserDefaults] stringForKey:@"AppleInterfaceStyle"]  isEqual: @"Dark"];
 }
 
